@@ -1,0 +1,12 @@
+{
+  "Server": {
+    "hostname": "localhost",
+    "port": 3006
+  },
+  "sign": "71c9ad8275b08eab851933cacb8d686s",
+  "Kontramarka": {
+    "username": "kinoman",
+    "password": "5ov49cj8wzi",
+    "url": "https://mticket.com.ua/gate1"
+  }
+}
