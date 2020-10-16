@@ -12,7 +12,9 @@ class User {
     }
 
     async auth(username, password) {
-        console.log('prv:', this[privateSymbol])
+        console.log('auth:', this[privateSymbol])
+        this[privateSymbol].sessionid = 'a3e8dgkgvufmrzgunczs5w'
+        return
         this[privateSymbol].sessionid = await fetch(
             `${url}/login/?username=${username}&password=${password}`,
             {
