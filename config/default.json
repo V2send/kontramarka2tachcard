@@ -3,10 +3,17 @@
     "hostname": "localhost",
     "port": 3006
   },
-  "sign": "71c9ad8275b08eab851933cacb8d686s",
+  "MongoDB": {
+    "url": "mongodb://localhost:27017/kontramarka2tachcard"
+  },
+  "Tachcard": {
+    "sign": "71c9ad8275b08eab851933cacb8d686s"
+  },
   "Kontramarka": {
     "username": "kinoman",
     "password": "5ov49cj8wzi",
-    "url": "https://mticket.com.ua/gate1"
+    "url": "https://mticket.com.ua/gate1",
+    "siteId": 77,
+    "aliveTimeout": 2700000 // 45 * 60 * 1000
   }
 }
