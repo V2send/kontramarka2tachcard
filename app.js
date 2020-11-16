@@ -4,11 +4,10 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 const mongoose = require('mongoose');
-
 const indexRouter = require('./src/routes');
 // const usersRouter = require('./routes/users');
-
 const config = require('config')
+const MapMultikeys = require('./src/MapMultikeys')
 
 const app = express();
 
@@ -22,9 +21,18 @@ const start = async () => {
       },
       err => console.log('MONGOOSE:', err)
   )
+  global.mapEventsHall = new Map()
+  global.mapPlaces = new MapMultikeys()
   // view engine setup
 // app.set('views', path.join(__dirname, 'views'));
 // app.set('view engine', 'pug');
+  /////////////////////////////
+  // const arr = [{code: 0}, {code: 3}, {code: 5}]
+  // console.log('reduce:', arr.reduce((acc, {code}) => {
+  //   console.log({acc, code})
+  //   return acc | code
+  // }, 0))
+  /////////////////////////////
 
   app.use(logger('dev'));
   app.use(express.json());

@@ -7,13 +7,14 @@
     "url": "mongodb://localhost:27017/kontramarka2tachcard"
   },
   "Tachcard": {
-    "sign": "71c9ad8275b08eab851933cacb8d686s"
+    "sign": "71c9ad8275b08eab851933cacb8d686s",
+    "sell_sign_arg": "bd94ec81b0bf7c1b2ba46c4552a0f22e"
   },
   "Kontramarka": {
     "username": "kinoman",
     "password": "5ov49cj8wzi",
     "url": "https://mticket.com.ua/gate1",
-    "siteId": 77,
+    "siteId": 12061,
     "aliveTimeout": 2700000 // 45 * 60 * 1000
   }
 }
