@@ -4,6 +4,10 @@ const md5 = require('md5')
 
 const {url, siteId} = config.get('Kontramarka')
 const {sign, sell_sign_arg} = config.get('Tachcard')
+const {timeoutSelectPlaces, timeoutReservePlaces} = config.get('Timers')
+const {timers: DBTimers} = require('./models/timers')
+
+const timersMap = new Map()
 
 const sliceStr = (str, parts) => {
     let start = 0
@@ -60,14 +64,63 @@ const fetchGet = async (method, args) => {
         .then(res => res.json())
 }
 
+const setTimerUnlock = async (tkSession, sessionid, timeout, _id) => {
+    const handlerTimer = async () => {
+        const basketList = await fetchGet('basket-list', {sessionid})
+        let allDone = true
+        for (const item of basketList.items) {
+            const {eventId, sectorId, placeId} = item
+            const unlockResult = await fetchGet('unlock', {sessionid, siteId, eventId, sectorId, placeId})
+            if (unlockResult.code !== 0)
+                allDone = false
+            // console.log({unlockResult})
+        }
+        console.log(`Timer ${tkSession}:${sessionid} done. basketList: ${basketList}`)
+        if (allDone)
+            await DBTimers.deleteOne({_id})
+        else {
+            // якщо не вдалося розблокувати всі місця, повторити через деякий час
+            const dateTimeout = new Date(Date.now() + 60000)
+            await DBTimers.findOneAndUpdate({_id}, {timeout: dateTimeout})
+        }
+    }
+    if (timeout <= 0)
+        await handlerTimer()
+    else {
+        const newTimerId = setTimeout(handlerTimer, timeout)
+        const timerId = timersMap.get(sessionid)
+        if (timerId)
+            clearTimeout(timerId)
+        timersMap.set(sessionid, newTimerId)
+    }
+}
+
+const createTimerUnlock = async (tkSession, sessionid, timeout) => {
+    const dateTimeout = new Date(Date.now() + timeout)
+    let dbTimer = await DBTimers.findOneAndUpdate({tkSession, sessionid}, {timeout: dateTimeout})
+    if (!dbTimer) {
+        dbTimer = new DBTimers({tkSession, sessionid, timeout: dateTimeout})
+        await dbTimer.save()
+    }
+    await setTimerUnlock(tkSession, sessionid, timeout, dbTimer._id)
+}
+
+const loadTimersUnlock = async () => {
+    const timers = await DBTimers.find({})
+    for (let {_id, tkSession, sessionid, timeout} of timers) {
+        timeout = timeout - Date.now()
+        await setTimerUnlock(tkSession, sessionid, timeout, _id)
+    }
+}
+
 const createTakeStatus = (user, code) => {
     let allPlaces
     return async (place, row) => {
-        console.log('takeStatus:', code, row, place, `places was taked: ${allPlaces ? 'true' : 'false'}`)
+        // console.log('takeStatus:', code, row, place, `places was taked: ${allPlaces ? 'true' : 'false'}`)
         if (!allPlaces)
             allPlaces = await takeallplacesshedules(user, code, false)
         if (place && row) {
-            const curPlace = allPlaces.places.find(plc => plc.place == place && plc.row == row)
+            const curPlace = allPlaces.places.find(plc => plc.place == place && plc.row == row) || {}
             return curPlace.status_place
         }
     }
@@ -96,6 +149,7 @@ const lockPlace = async (user, eventId, placeId, sectorId, place, row, isLock = 
             return {...response, status: true, status_update: true, status_place: 1}
         const curItem = items.find(item => item.placeId === placeId)
         if (curItem) {
+            await createTimerUnlock(user.tkSession, sessionid, timeoutSelectPlaces)
             return {...response, status: true, status_update: true, status_place: 2}
         } else {
             return {...response, status: false, status_update: false}
@@ -221,7 +275,6 @@ const takeallplacesshedules = async (user, eventId, isTakeBasketList = true) => 
         const placesIDs = basketList.map(({placeId}) => placeId)
         result.forEach(({sectors, hallId}) => {
             mapEventsHall.set(eventId, hallId)
-            console.log({mapEventsHall})
             sectors.forEach(({rows, sectorId}) => {
                 rows.forEach(({number: row, places: pls}) => {
                     places.push(...pls.map(({number: place, status, placeId, prices}) => {
@@ -241,7 +294,6 @@ const takeallplacesshedules = async (user, eventId, isTakeBasketList = true) => 
                 })
             })
         })
-        // console.log({mapPlaces})
         return {status: true, sign, places}
     } catch
         (error) {
@@ -284,43 +336,10 @@ const updateplace = async (user, code, place, row, req_status_place) => {
                 // const getBackMethod = await lockMethodResult(user, 'getSessionId', [code])
                 const {items, ...result} = await lockPlace(user, code, placeId, sectorId, place, row, req_status_place === 2)
                 // getBackMethod()
-                console.log({items})
+                // console.log({items})
                 if (items.length === 0) // Якщо корзина на цьому сеансі пуста, видаляємо eventId щоб можна було на цей сеанс підв'язати інший евент
                     await user.removeEventId(code)
                 return result
-                // const method = req_status_place === 2 ? 'lock' : 'unlock'
-                // const result = await fetchGet(`${url}/${method}/?sessionid=${user.sessionid}&siteId=${siteId}&eventId=${code}&sectorId=${sectorId}&placeId=${placeId}`)
-                // user.updateLastUse()
-                // console.log({...result})
-                // const {code: responseCode, items} = result
-                // const response = {
-                //     status: false,
-                //     sign,
-                //     session: user.session,
-                //     code,
-                //     place,
-                //     row,
-                //     status_place: 0,
-                //     status_update: false
-                // }
-                // if (responseCode === 0) {
-                //     if (req_status_place === 1)
-                //         return {...response, status: true, status_update: true, status_place: 1}
-                //     const curItem = items.find(item => item.placeId === placeId)
-                //     if (curItem) {
-                //         return {...response, status: true, status_update: true, status_place: 2}
-                //     } else {
-                //
-                //     }
-                // } else {
-                //     let status_place
-                //     if (responseCode === 17) // 17 - Указанное место уже находится в корзине
-                //         status_place = 2
-                //     else {
-                //         status_place = await takeStatus(user, code, place, row)
-                //     }
-                //     return {...response, status: false, status_update: false, status_place}
-                // }
                 break
             case 3:
                 const {places, ...res} = await reservePlace(user, code, [{code, place, row}])
@@ -364,12 +383,11 @@ const sendbuytickets = async (user, code, email, places, sell_sign) => {
                 break
             case 4:
                 const {tkSession: session} = user
-                console.log('sell_sign:', md5(sign + session + sell_sign_arg))
+                // console.log('sell_sign:', md5(sign + session + sell_sign_arg))
                 if (md5(sign + session + sell_sign_arg) !== sell_sign)
                     throw {message: `Wrong sell_sign`}
                 const sessionid = await user.getSessionId(code)
                 const basketList = [...(await setPropertyIfNotExist(user, 'basketList', async () => await getBasketList(sessionid), true))]
-                console.log({basketList})
                 const boughtPlaces = []
                 for (let i = 0; i < places.length; i++) {
                     const {code: pCode, place, row, amount} = places[i]
@@ -388,7 +406,6 @@ const sendbuytickets = async (user, code, email, places, sell_sign) => {
                     ({placeId, sectorId, placeNumber, rowNumber}) => lockPlace(user, code, placeId, sectorId, placeNumber, rowNumber, false)
                 )
                 const unlockResults = await Promise.all(unlockPromises)
-                console.log({unlockResults})
                 const notUnlockedPlaces = unlockResults.filter(({status}) => !status)
                 if (notUnlockedPlaces.length)
                     throw {
@@ -398,7 +415,6 @@ const sendbuytickets = async (user, code, email, places, sell_sign) => {
                         })))}`
                     }
                 const result = await fetchGet('basket-buy', {sessionid, email})
-                console.log({result})
                 if (result.code === 0) {
                     const tickets = result.tickets.map(({rowNumber, placeNumber, placeId, price, barcode}) => ({
                         rowNumber,
@@ -441,7 +457,7 @@ const sendbuytickets = async (user, code, email, places, sell_sign) => {
 }
 
 const moneybackforplaces = async (user, eventId, email, places, sell_sign) => {
-    let update = f=>f
+    let update = f => f
     try {
         eventId = Number.parseInt(eventId)
         const status_place = checkPlaces(eventId, places)
@@ -459,15 +475,13 @@ const moneybackforplaces = async (user, eventId, email, places, sell_sign) => {
             if (foundTickets.length > 0)
                 refundMap.set(orderId, (refundMap.get(orderId) || []).concat(foundTickets))
         })
+        if (refundMap.size !== places.length)
+            throw {message: 'Places not purchased'}
         const sessionid = await user.getSessionId(eventId)
         const refundPlaces = []
         for (let [orderId, tickets] of refundMap) {
             const refundBasketList = await fetchGet('refund-basket-list', {sessionid})
-            update = async () => {
-                console.log('### update mongo')
-                return await user.updateLastUse(sessionid)
-            }
-            console.log({orderId, tickets, refundBasketList})
+            update = async () => await user.updateLastUse(sessionid)
             const ticketsNotInBasketList = [...tickets]
             refundBasketList.items = refundBasketList.items.filter(item => {
                 const indexTicket = ticketsNotInBasketList.findIndex(({rowNumber, placeNumber}) => item.rowNumber == rowNumber && item.placeNumber == placeNumber)
@@ -476,7 +490,6 @@ const moneybackforplaces = async (user, eventId, email, places, sell_sign) => {
                 return indexTicket === -1
             })
             if (refundBasketList.items.length !== 0) {
-                // якщо в списку є місця яких не повинно бути, знайти їхні orderId і barcode за допомогою метода get-orders і видалити їх з цього списку
                 const orders = await fetchGet('get-orders', {sessionid, siteId, eventId})
                 for (let ticketItems of refundBasketList.items) {
                     const {placeId, rowNumber: t_rowNumber, placeNumber: t_placeNumber} = ticketItems
@@ -538,4 +551,12 @@ const moneybackforplaces = async (user, eventId, email, places, sell_sign) => {
     // places.forEach(({}))
 }
 
-module.exports = {takeallshedules, takeallplacesshedules, updateplace, sendbuytickets, moneybackforplaces}
+module.exports = {
+    takeallshedules,
+    takeallplacesshedules,
+    updateplace,
+    sendbuytickets,
+    moneybackforplaces,
+    createTimerUnlock,
+    loadTimersUnlock
+}

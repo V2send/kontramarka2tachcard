@@ -16,5 +16,9 @@
     "url": "https://mticket.com.ua/gate1",
     "siteId": 12061,
     "aliveTimeout": 2700000 // 45 * 60 * 1000
+  },
+  "Timers": {
+    "timeoutSelectPlaces": 15000, // 3 min
+    "timeoutReservePlaces": 30000 // 15 min
   }
 }

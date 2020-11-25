@@ -1,4 +1,5 @@
 const createError = require('http-errors');
+
 const express = require('express');
 const path = require('path');
 const cookieParser = require('cookie-parser');
@@ -8,12 +9,14 @@ const indexRouter = require('./src/routes');
 // const usersRouter = require('./routes/users');
 const config = require('config')
 const MapMultikeys = require('./src/MapMultikeys')
+const {loadTimersUnlock} = require("./src/methods")
 
 const app = express();
 
 const {hostname, port} = config.get('Server')
 
 const start = async () => {
+  await mongoose.set('useFindAndModify', false)
   await mongoose.connect(config.get('MongoDB.url'), {
         useNewUrlParser: true,
         useUnifiedTopology: true,
@@ -23,6 +26,7 @@ const start = async () => {
   )
   global.mapEventsHall = new Map()
   global.mapPlaces = new MapMultikeys()
+  await loadTimersUnlock()
   // view engine setup
 // app.set('views', path.join(__dirname, 'views'));
 // app.set('view engine', 'pug');

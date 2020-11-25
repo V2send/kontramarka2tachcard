@@ -82,7 +82,7 @@ class User {
         const {dbUser, clearNotExistSessions} = this[privateSymbol]
         await clearNotExistSessions()
         const session = dbUser.sessions.find(s => s.eventId === eventId || s.eventId === -1)
-        console.log('dbUser.sessions:', dbUser.sessions)
+        // console.log('dbUser.sessions:', dbUser.sessions)
         let sessionid
         if (!session) {
             // auth new sessionid

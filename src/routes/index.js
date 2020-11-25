@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const config = require('config')
 const {getUser} = require('../user')
-const {takeallshedules, takeallplacesshedules, updateplace, sendbuytickets, moneybackforplaces} = require('../methods')
+const {takeallshedules, takeallplacesshedules, updateplace, sendbuytickets, moneybackforplaces, createTimerUnlock} = require('../methods')
 
 const checkSign = (req, res, next) => {
     // console.log('empty use:', req)
@@ -17,7 +17,7 @@ const getCommonUser = async (req, res, next) => {
     const session = req.body.session || '_'
     const user = await getUser(session)
     // await user.reauthIfNotAlive()
-    console.log('sessionid:', user)
+    // console.log('sessionid:', user)
     req.user = user
     next()
 }
@@ -33,6 +33,12 @@ const makeMiddlewareMethod = handler => async (req, res) => {
             res.status(500).json(e)
     }
 }
+
+router.post('/testTimer', async (req, res, next) => {
+    const {tkSession, sessionid, timeout} = req.body
+    await createTimerUnlock(tkSession, sessionid, timeout)
+    res.send('ok')
+})
 
 router.use(checkSign)
 router.use(getCommonUser)
