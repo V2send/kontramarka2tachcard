@@ -3,7 +3,7 @@ const config = require('config')
 const md5 = require('md5')
 
 const {url, siteId} = config.get('Kontramarka')
-const {sign, sell_sign_arg} = config.get('Tachcard')
+const {sign, sell_sign_arg, uncheckplacesUrl} = config.get('Tachcard')
 const {timeoutSelectPlaces, timeoutReservePlaces} = config.get('Timers')
 const {timers: DBTimers} = require('./models/timers')
 
@@ -68,14 +68,25 @@ const setTimerUnlock = async (tkSession, sessionid, timeout, _id) => {
     const handlerTimer = async () => {
         const basketList = await fetchGet('basket-list', {sessionid})
         let allDone = true
+        const {theater} = config.get('useFinExpert')
+        const places = []
         for (const item of basketList.items) {
-            const {eventId, sectorId, placeId} = item
+            const {eventId, sectorId, placeId, rowNumber, placeNumber} = item
             const unlockResult = await fetchGet('unlock', {sessionid, siteId, eventId, sectorId, placeId})
             if (unlockResult.code !== 0)
                 allDone = false
+            else
+                places.push({
+                    theater,
+                    code: eventId,
+                    row: Number.parseInt(rowNumber),
+                    place: Number.parseInt(placeNumber),
+                    status_place: 1,
+                    session: tkSession
+                })
             // console.log({unlockResult})
         }
-        console.log(`Timer ${tkSession}:${sessionid} done. basketList: ${basketList}`)
+        console.log(`Timer ${tkSession}:${sessionid} done.\n${{basketList, sendTachkard: {places, sign}}}`)
         if (allDone)
             await DBTimers.deleteOne({_id})
         else {
@@ -83,6 +94,16 @@ const setTimerUnlock = async (tkSession, sessionid, timeout, _id) => {
             const dateTimeout = new Date(Date.now() + 60000)
             await DBTimers.findOneAndUpdate({_id}, {timeout: dateTimeout})
         }
+        fetch(
+            uncheckplacesUrl,
+            {
+                method: 'POST',
+                body: {
+                    places,
+                    sign
+                },
+                headers: {'Content-Type': 'application/json'}
+            })
     }
     if (timeout <= 0)
         await handlerTimer()
@@ -214,7 +235,9 @@ const reservePlace = async (user, code, places) => {
         })
     }
     // const placesFields =  {...result[0]}//places.length === 1 ? {...result[1]} : {places: result}
-    return {status, sign, session, code, places: result}
+    if (status)
+        await createTimerUnlock(user.tkSession, sessionid, timeoutReservePlaces)
+    return {status, sign, /*session,*/ code, places: result}
 }
 
 const takeallshedules = async user => {
@@ -262,8 +285,10 @@ const takeallplacesshedules = async (user, eventId, isTakeBasketList = true) => 
         const sessionid = await user.getSessionId(eventId)
         const [basketList, result] = await Promise.all([
             isTakeBasketList ? (user.basketList || await getBasketList(sessionid)) : [],
-            await fetchGet('eventmap/', {sessionid, siteId, eventId})
+            await fetchGet('eventmap', {sessionid, siteId, eventId})
         ])
+        if (result.length === 0)
+            throw {message: 'Event not exist'}
         if (isTakeBasketList && !user.basketList)
             user.basketList = basketList
         if (basketList.length === 0) // Якщо корзина на цьому сеансі пуста, видаляємо eventId щоб можна було на цей сеанс підв'язати інший евент
@@ -294,7 +319,8 @@ const takeallplacesshedules = async (user, eventId, isTakeBasketList = true) => 
                 })
             })
         })
-        return {status: true, sign, places}
+        const {hallId: iRoom, name: hRoom} = result[0]
+        return {status: true, sign, reversRow: true, iRoom, hRoom, places}
     } catch
         (error) {
         console.log('Error:', error)

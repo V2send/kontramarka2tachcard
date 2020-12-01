@@ -2,8 +2,10 @@
   "name": "kontramarka2tachcard",
   "version": "0.0.0",
   "private": true,
+  "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "build": "nexe"
   },
   "dependencies": {
     "config": "^3.3.2",
@@ -14,6 +16,7 @@
     "md5": "^2.3.0",
     "mongoose": "^5.10.9",
     "morgan": "~1.9.1",
+    "nexe": "^3.3.7",
     "node-fetch": "^2.6.1",
     "pug": "2.0.0-beta11"
   }

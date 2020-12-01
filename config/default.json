@@ -8,7 +8,8 @@
   },
   "Tachcard": {
     "sign": "71c9ad8275b08eab851933cacb8d686s",
-    "sell_sign_arg": "bd94ec81b0bf7c1b2ba46c4552a0f22e"
+    "sell_sign_arg": "bd94ec81b0bf7c1b2ba46c4552a0f22e",
+    "uncheckplacesUrl": "https://api-citysmart-1.botcreator.io/api/uncheckplaces"
   },
   "Kontramarka": {
     "username": "kinoman",
@@ -18,7 +19,14 @@
     "aliveTimeout": 2700000 // 45 * 60 * 1000
   },
   "Timers": {
-    "timeoutSelectPlaces": 15000, // 3 min
-    "timeoutReservePlaces": 30000 // 15 min
+    "timeoutSelectPlaces": 180000, // 3 min
+    "timeoutReservePlaces": 300000 // 5 min
+  },
+  "useFinExpert": {
+    "isUse": true,
+    "hostname": "http://192.168.88.254",
+    "port": 8080,
+    "codeToEventIdFile": "codeToEventId.txt",
+    "theater": 1
   }
 }
