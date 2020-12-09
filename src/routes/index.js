@@ -8,7 +8,7 @@ const {isUse: isUseFinExpert} = config.get('useFinExpert')
 const {responseCompare} = require('../models/responseCompare')
 
 const redirectMethods = {
-    takeallplacesshedules: async ({user, body: {code}}) => await takeallplacesshedules(user, code),
+    // takeallplacesshedules: async ({user, body: {code}}) => await takeallplacesshedules(user, code),
     updateplace: async ({user, body: {code, place, row, status_place}}) => await updateplace(user, code, place, row, status_place),
     sendbuytickets: async ({user, body: {code, method, email, places, sell_sign}}) =>
         method === 'sendbuytickets' ?
@@ -82,6 +82,7 @@ const finExpertMiddleware = async (req, res) => {
     const body = JSON.stringify(req.body)
     const {url} = req
     const {hostname, port} = config.get('useFinExpert')
+    console.log(`feFetch to: ${hostname}:${port}${url}`)
     const feRequestPromise = fetch(
         `${hostname}:${port}${url}`,
         {
@@ -91,41 +92,85 @@ const finExpertMiddleware = async (req, res) => {
         })
         .then(res => res.json())
         .then(result => {
+            console.log('feFetch res.status(200):', {result})
             res.status(200).json(result)
             return result
         })
     const method = url.substring(1)
     const redirectMethod = redirectMethods[method]
+    const {codeToEventId, eventIdToCode} = global
+    console.log({redirectMethod})
     if (redirectMethod) {
-        const {codeToEventId, eventIdToCode} = global
-        const replaceAllValues = (obj, key, handler) => {
+        let {code} = req.body
+        if (!code)
+            return
+        // code = Number.parseInt(code)
+        if (codeToEventId(code) === code)
+            return
+        const replaceAllValues = (obj, handler) => {
             if (Array.isArray(obj))
-                obj.forEach(value => replaceAllValues(value, key, handler))
+                obj.forEach(value => replaceAllValues(value, handler))
             else if (typeof obj === 'object') {
-                if (obj.hasOwnProperty(key))
-                    obj[key] = handler(obj[key])
-                Object.values(obj).map(value => replaceAllValues(value, key, handler))
+                Object.keys(obj).forEach(key => obj[key] = handler(key, obj[key]))
+                Object.values(obj).map(value => replaceAllValues(value, handler))
             }
         }
         const newBody = req.body
-        replaceAllValues(newBody, 'code', codeToEventId)
-        // console.log(newBody)
-        const {session, code, place, row, status_place} = newBody
+        // const parseCode = handler => (key, code) => key === 'code' ? handler(code) : code
+        const parseToNumber = codeHandler => (key, value) => key === 'code' ?
+            Number.parseInt(codeHandler(value))
+            : (['place', 'row', 'status_place'].indexOf(key) !== -1 ?
+                Number.parseInt(value)
+                : value)
+
+        replaceAllValues(newBody, parseToNumber(codeToEventId))
+        console.log({newBody})
+        const {session} = newBody
         const user = await getUser(session)
         let kmRequestPromise = redirectMethod({user, body: newBody})// updateplace(user, code, place, row, status_place)
+        // console.log('Run promises')
         const [feResponse, kmResponse] = await Promise.all([feRequestPromise, kmRequestPromise])
+        // console.log('result requests:', {feResponse, kmResponse})
         const cmpKmResponse = JSON.parse(JSON.stringify(kmResponse))
         const cmpFeResponse = JSON.parse(JSON.stringify(feResponse))
-        replaceAllValues(cmpKmResponse, 'code', eventIdToCode)
+        replaceAllValues(cmpKmResponse, parseToNumber(eventIdToCode))
+        replaceAllValues(cmpFeResponse, parseToNumber(f=>f))
         if (method === 'takeallplacesshedules') {
-            [cmpKmResponse, cmpFeResponse].forEach(obj => {
-                delete obj.iRoom
-                delete obj.hRoom
+            [cmpKmResponse, cmpFeResponse].forEach((obj, i) => {
+                // delete obj.iRoom
+                // delete obj.hRoom
+                obj.places.forEach(place => {
+                    if (i === 0)
+                        place.code = eventIdToCode(place.code)
+                    if (place.status_place === 1 || place.session !== session)
+                        place.session = ''
+                    if (place.status_place === 3)
+                        place.status_place = 2
+                })
+                obj.places.sort((a, b) => {
+                    if (a.row > b.row)
+                        return 1
+                    else if (a.row === b.row) {
+                        if (a.place > b.place)
+                            return 1
+                        else
+                            return -1
+                    }
+                    else
+                        return -1
+                })
             })
         }
         const isEqual = compareObjects(cmpFeResponse, cmpKmResponse, (v1, v2) => typeof v1 === 'boolean' || typeof v2 === 'boolean' ? v1 == v2 : v1 === v2)
         // console.log({feResult: feResponse, kmResult: kmResponse, isEqual})
-        const record = new responseCompare({method, request: req.body, feResponse, kmResponse, isEqual})
+        const record = new responseCompare({
+            date: new Date(),
+            method,
+            request: req.body,
+            feResponse,
+            kmResponse,
+            isEqual
+        })
         await record.save()
         // new Promise(async resolve => {
         //
@@ -138,20 +183,6 @@ router.use(isUseFinExpert ? finExpertMiddleware : (req, res, next) => next())
 
 router.use(checkSign)
 router.use(getCommonUser)
-
-router.post('/test', async (req, res, next) => {
-    console.log('test')
-    try {
-        const {user, body: {code}} = req
-        const sessionid = await user.getSessionId(code)
-        // await user.removeEventId(code)
-        await user.updateLastUse(sessionid)
-        res.status(200).json({sessionid})
-    } catch (e) {
-        res.status(e.code).json(e)
-    }
-})
-
 
 router.post('/takeallshedules', makeMiddlewareMethod(async ({user}) => await takeallshedules(user)))
 

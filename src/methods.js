@@ -69,7 +69,7 @@ const setTimerUnlock = async (tkSession, sessionid, timeout, _id) => {
         const basketList = await fetchGet('basket-list', {sessionid})
         let allDone = true
         const {theater} = config.get('useFinExpert')
-        const places = []
+        let places = []
         for (const item of basketList.items) {
             const {eventId, sectorId, placeId, rowNumber, placeNumber} = item
             const unlockResult = await fetchGet('unlock', {sessionid, siteId, eventId, sectorId, placeId})
@@ -86,7 +86,7 @@ const setTimerUnlock = async (tkSession, sessionid, timeout, _id) => {
                 })
             // console.log({unlockResult})
         }
-        console.log(`Timer ${tkSession}:${sessionid} done.\n${{basketList, sendTachkard: {places, sign}}}`)
+        console.log(`Timer ${tkSession}:${sessionid} done`)
         if (allDone)
             await DBTimers.deleteOne({_id})
         else {
@@ -94,7 +94,10 @@ const setTimerUnlock = async (tkSession, sessionid, timeout, _id) => {
             const dateTimeout = new Date(Date.now() + 60000)
             await DBTimers.findOneAndUpdate({_id}, {timeout: dateTimeout})
         }
-        fetch(
+        const {eventIdToCode} = global
+        places = places.map(place => ({...place, code: eventIdToCode(place.code)}))
+        // console.log('fetch:', uncheckplacesUrl, {places, sign})
+        const responseUncheck = await fetch(
             uncheckplacesUrl,
             {
                 method: 'POST',
@@ -104,6 +107,7 @@ const setTimerUnlock = async (tkSession, sessionid, timeout, _id) => {
                 },
                 headers: {'Content-Type': 'application/json'}
             })
+        // console.log({responseUncheck})
     }
     if (timeout <= 0)
         await handlerTimer()
@@ -151,7 +155,7 @@ const lockPlace = async (user, eventId, placeId, sectorId, place, row, isLock = 
     const method = isLock ? 'lock' : 'unlock'
     const sessionid = await user.getSessionId(eventId)
     const result = await fetchGet(method, {sessionid, siteId, eventId, sectorId, placeId})
-    // user.updateLastUse(sessionid)
+    await user.updateLastUse(sessionid)
     // console.log({...result})
     const {code: responseCode, items} = result
     const response = {
@@ -303,9 +307,15 @@ const takeallplacesshedules = async (user, eventId, isTakeBasketList = true) => 
             sectors.forEach(({rows, sectorId}) => {
                 rows.forEach(({number: row, places: pls}) => {
                     places.push(...pls.map(({number: place, status, placeId, prices}) => {
-                        const {price: amount} = (Array.isArray(prices) && prices.length) > 0 ? prices[0] : [{price: NaN}]
+                        let {price: amount} = (Array.isArray(prices) && prices.length) > 0 ? prices[0] : [{price: NaN}]
                         place = Number.parseInt(place)
-                        // console.log({hallId, row, place, placeId, sectorId})
+                        hallId = Number.parseInt(hallId)
+                        row = Number.parseInt(row)
+                        place = Number.parseInt(place)
+                        placeId = Number.parseInt(placeId)
+                        sectorId = Number.parseInt(sectorId)
+                        amount = amount / 100
+                        // console.log('mapPlaces.set:', {hallId, row, place, placeId, sectorId})
                         mapPlaces.set([hallId, row, place], {placeId, sectorId})
                         return {
                             code: eventId,
@@ -319,8 +329,8 @@ const takeallplacesshedules = async (user, eventId, isTakeBasketList = true) => 
                 })
             })
         })
-        const {hallId: iRoom, name: hRoom} = result[0]
-        return {status: true, sign, reversRow: true, iRoom, hRoom, places}
+        // const {hallId: iRoom, name: hRoom} = result[0]
+        return {status: true, sign, reversRow: true, /*iRoom, hRoom,*/ places}
     } catch
         (error) {
         console.log('Error:', error)
@@ -337,6 +347,7 @@ const updateplace = async (user, code, place, row, req_status_place) => {
         code = Number.parseInt(code)
         place = Number.parseInt(place)
         row = Number.parseInt(row)
+        req_status_place = Number.parseInt(req_status_place)
         const {mapEventsHall, mapPlaces} = global
         let hallId = mapEventsHall.get(code)
         let placeWasUpdating = false
@@ -346,8 +357,10 @@ const updateplace = async (user, code, place, row, req_status_place) => {
             placeWasUpdating = true
             hallId = mapEventsHall.get(code)
         }
+        // console.log('get placeItem:', {hallId, row, place})
         let placeItem = mapPlaces.get([hallId, row, place])
         if (!placeItem) {
+            // console.log({placeItem})
             if (placeWasUpdating)
                 throw {message: `Place [${row}:${place}] not exist!`}
             await takeStatus()
@@ -403,6 +416,9 @@ const sendbuytickets = async (user, code, email, places, sell_sign) => {
     try {
         code = Number.parseInt(code)
         const status_place = checkPlaces(code, places)
+        places.forEach(item => {
+            ['amount', 'code', 'place', 'row', 'status_place'].forEach(key => item[key] = Number.parseInt(item[key]))
+        })
         switch (status_place) {
             case 3:
                 return await reservePlace(user, code, places)
@@ -457,7 +473,7 @@ const sendbuytickets = async (user, code, email, places, sell_sign) => {
                     return {
                         status: true,
                         sign,
-                        session,
+                        // session,
                         code,
                         places: tickets.map(({rowNumber, placeNumber}) => ({
                             code,
@@ -487,6 +503,9 @@ const moneybackforplaces = async (user, eventId, email, places, sell_sign) => {
     try {
         eventId = Number.parseInt(eventId)
         const status_place = checkPlaces(eventId, places)
+        places.forEach(item => {
+            ['amount', 'code', 'place', 'row', 'status_place'].forEach(key => item[key] = Number.parseInt(item[key]))
+        })
         if (status_place !== 1)
             throw {message: 'Wrong status_place'}
         const {tkSession: session} = user

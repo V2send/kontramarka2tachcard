@@ -33,6 +33,7 @@ const start = async () => {
         const readFile = () => {
             const codeToEventId = fs.readFileSync(codeToEventIdFile).toString()
             const arr = codeToEventId.split(/\r?\n/).map(value => value.split(/\t+| +|:|;|-/).map(value1 => Number.parseInt(value1)))
+            arr.push(...arr.map(([key, value]) => ([key.toString(), value.toString()])))
             // console.log({arr})
             const mapCodeToEventId = new Map(arr)
             const mapEventIdToCode = new Map(arr.map(value => value.reverse()))
@@ -43,59 +44,7 @@ const start = async () => {
         readFile()
         fs.watchFile(codeToEventIdFile, readFile)
     }
-    //////////////////////////////
-    // const compareObjects = (obj1, obj2, handlerCmpValues = (value1, value2) => value1 === value2) => {
-    //     if (typeof obj1 === 'object') {
-    //         if (typeof obj2 !== 'object')
-    //             return false
-    //         if (Array.isArray(obj1)) {
-    //             if (!Array.isArray(obj2) || obj2.length !== obj1.length)
-    //                 return false
-    //             obj1 = obj1.sort()
-    //             obj2 = obj2.sort()
-    //         }
-    //         const [keys1, keys2] = [obj1, obj2].map(obj => Object.keys(obj).sort())
-    //         console.log({keys1, keys2})
-    //         if (keys1.length !== keys2.length || JSON.stringify(keys1) !== JSON.stringify(keys2))
-    //             return false
-    //         for (let key of keys1) {
-    //             if (!compareObjects(obj1[key], obj2[key], handlerCmpValues))
-    //                 return false
-    //         }
-    //         return true
-    //     }
-    //     if (typeof obj2 === 'object')
-    //         return false
-    //     return handlerCmpValues(obj1, obj2)
-    // }
-    // const [obj1, obj2] = [
-    //     {
-    //         status: 0,
-    //         sign: '71c9ad8275b08eab851933cacb8d686s',
-    //         code: 80868,
-    //         place: 1,
-    //         row: 1,
-    //         session: 'a997427dc8356026316dac039b841198',
-    //         status_place: 1,
-    //         status_update: 0
-    //     },
-    //     {
-    //         status: false,
-    //         sign: '71c9ad8275b08eab851933cacb8d686s',
-    //         session: 'a997427dc8356026316dac039b841198',
-    //         code: 80868,
-    //         place: 1,
-    //         row: 1,
-    //         status_place: 1,
-    //         status_update: false
-    //     }
-    // ]
-    // console.log('compare:', compareObjects(obj1, obj2, (v1, v2) => {
-    //     if (typeof v1 === 'boolean' || typeof v2 === 'boolean')
-    //         return v1 == v2
-    //     return v1 === v2
-    // }))
-    //////////////////////////////
+
     // view engine setup
 // app.set('views', path.join(__dirname, 'views'));
 // app.set('view engine', 'pug');
@@ -105,7 +54,6 @@ const start = async () => {
     app.use(express.urlencoded({extended: false}));
     app.use(cookieParser());
     app.use(express.static(path.join(__dirname, 'public')));
-
     app.use('/', indexRouter);
 // app.use('/users', usersRouter);
 
